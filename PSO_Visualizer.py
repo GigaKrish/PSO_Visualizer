@@ -6,7 +6,6 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import time
 import traceback # For printing detailed errors
 
-# --- Test Functions and Constants (Unchanged) ---
 def sphere(x): return np.sum(np.array(x) ** 2)
 def rosenbrock(x): a,b=1,100; x1,x2=x[0],x[1]; return (a-x1)**2 + b*(x2-x1**2)**2
 def rastrigin(x): A=10; n=len(x); return A*n+sum([(xi**2-A*np.cos(2*np.pi*xi)) for xi in x])
@@ -19,12 +18,19 @@ TEST_FUNCTIONS = {'Sphere': sphere, 'Rosenbrock': rosenbrock, 'Rastrigin': rastr
 GLOBAL_OPTIMA = {'Sphere': {'position': [0,0], 'value': 0}, 'Rosenbrock': {'position': [1,1], 'value': 0}, 'Rastrigin': {'position': [0,0], 'value': 0}, 'Ackley': {'position': [0,0], 'value': 0}, 'Himmelblau': {'position': [3,2], 'value': 0}, 'Easom': {'position': [np.pi,np.pi], 'value': -1}, 'Testing Function': {'position': [3.14,2.72], 'value': testing_function([3.14,2.72])}}
 FUNCTION_DOMAINS = {'Sphere': (-5.0, 5.0), 'Rosenbrock': (-5.0, 5.0), 'Rastrigin': (-5.12, 5.12), 'Ackley': (-5.0, 5.0), 'Himmelblau': (-6.0, 6.0), 'Easom': (0.0, 2 * np.pi), 'Testing Function': (-5.0, 10.0)}
 
-# --- PSO Algorithm (Unchanged) ---
+# (adjusted) PSO Algorithm 
 def precompute_pso(obj_func, n_iterations=100, n_particles=30, domain_min=-5.0, domain_max=5.0):
     positions=np.random.uniform(domain_min,domain_max,(n_particles,2)); velocities=np.random.uniform(-1,1,(n_particles,2))
     pbest_values=np.array([obj_func(p) for p in positions]); pbest_positions=positions.copy()
     gbest_idx=np.argmin(pbest_values); gbest_position=pbest_positions[gbest_idx].copy(); gbest_value=pbest_values[gbest_idx]
-    w,c1,c2=0.7,1.5,1.5
+
+    
+    #PSO PARAMETERS
+    w=0.9 #SET TO FAST FOR NOW (to escape local optmima properly in Himmelblau)
+    c1 = 1.5
+    c2 = 1.5
+
+    
     iterations_data=[{'positions':positions.copy(),'velocities':velocities.copy(),'pbest_positions':pbest_positions.copy(),'pbest_values':pbest_values.copy(),'gbest_position':gbest_position.copy(),'gbest_value':gbest_value}]
     for _ in range(n_iterations):
         r1,r2=np.random.random((n_particles,2)),np.random.random((n_particles,2))
@@ -45,17 +51,15 @@ class PSOViewer:
         master.geometry("1200x750")
         master.minsize(900, 600)
 
-        # Define background colors as instance variables
         self.main_bg = "#f0f0f0"
         self.control_bg = "#e8e8e8"
         self.plot_bg = "#ffffff"
-        self.button_active_bg = '#c0c0c0' # Slightly darker active bg
+        self.button_active_bg = '#c0c0c0'
 
         master.configure(bg=self.main_bg)
 
-        self._configure_styles() # Configure styles using instance colors
+        self._configure_styles() 
 
-        # --- Core Parameters & State ---
         self.current_iter = 0; self.is_playing = False; self.anim_id = None
         self.swarm_data = []; self.fig_width, self.fig_height, self.fig_dpi = 12, 5, 100
         self.RES = 50
@@ -83,14 +87,13 @@ class PSOViewer:
 
     def _configure_styles(self):
         style = ttk.Style()
-        try: style.theme_use('clam') # Clam or aqua(mac) often look better
+        try: style.theme_use('clam')
         except tk.TclError: print("Clam theme not found, using default."); style.theme_use('default')
 
-        # Define fonts
-        button_font = ("Segoe UI", 10, "bold") # Bolder buttons
+        button_font = ("Segoe UI", 10, "bold") 
         label_font = ("Segoe UI", 9)
         header_font = ("Segoe UI", 11, "bold")
-        result_font = ("Segoe UI", 10) # Slightly larger result text
+        result_font = ("Segoe UI", 10)
         result_font_bold = (result_font[0], result_font[1], "bold")
 
         style.configure("TFrame", background=self.main_bg)
@@ -180,7 +183,7 @@ class PSOViewer:
 
         # --- Results Area (Increased padding and font size) ---
         results_frame=ttk.LabelFrame(self.main_area,text="Results", padding=(10, 5)); results_frame.pack(fill=tk.X,pady=(5,0)) # Add padding to frame
-        # Use specific style for labels here
+
         pady_results = 5 # Increase vertical padding
         ttk.Label(results_frame, text="PSO Best Pos:", style="ResultLabel.TLabel").grid(row=0, column=0, padx=5, pady=pady_results, sticky=tk.W)
         ttk.Label(results_frame, textvariable=self.gbest_pos_var, style="ResultValue.TLabel").grid(row=0, column=1, padx=5, pady=pady_results, sticky=tk.W)
@@ -196,20 +199,11 @@ class PSOViewer:
         ttk.Label(results_frame, textvariable=self.val_error_var, style="ResultValue.TLabel").grid(row=1, column=5, padx=5, pady=pady_results, sticky=tk.W)
         results_frame.columnconfigure(1, weight=1); results_frame.columnconfigure(3, weight=1); results_frame.columnconfigure(5, weight=1)
 
-        # --- Define Controls List ---
-        self.interactive_controls = [ # Updated list with potentially new widgets if any
+        #Menu design
+        self.interactive_controls = [ 
             self.func_menu, self.n_particles_scale, self.n_iterations_scale,
             self.recalc_button, self.play_button, self.anim_delay_scale,
             self.iter_scale, self.quit_button ]
-
-    # ===================================================================
-    # Methods below remain unchanged from the previous working version
-    # (_create_figure_and_axes, _create_canvas, _update_domain_label,
-    #  _toggle_controls, recalculate_pso, _clear_plots_on_error,
-    #  _nullify_artists, on_function_change, setup_plots, update_plot,
-    #  update_results_display, on_slider_change, toggle_play, animate,
-    #  on_closing)
-    # ===================================================================
 
     def _create_figure_and_axes(self):
         plt.style.use('seaborn-v0_8-whitegrid'); plt.rcParams.update({'font.size':9})
@@ -296,10 +290,9 @@ class PSOViewer:
 
         if not self.swarm_data:
             print("Error: setup_plots called with no swarm data.")
-            self._clear_plots_on_error() # Attempt cleanup
+            self._clear_plots_on_error() 
             return
 
-        # Get initial data safely
         initial_data = self.swarm_data[0]
         positions = initial_data['positions']
         velocities = initial_data['velocities']
@@ -309,9 +302,8 @@ class PSOViewer:
             z_positions = np.array([self.obj_func(p) for p in positions])
         except Exception as e:
             print(f"Error calculating initial Z positions in setup: {e}")
-            z_positions = np.zeros(len(positions)) # Fallback
+            z_positions = np.zeros(len(positions)) 
 
-        # --- Prepare background grid ---
         x = np.linspace(self.domain_min, self.domain_max, self.RES)
         y = np.linspace(self.domain_min, self.domain_max, self.RES)
         X, Y = np.meshgrid(x, y)
@@ -321,29 +313,26 @@ class PSOViewer:
         except Exception as e:
              print(f"Error calculating Z grid in setup: {e}")
              messagebox.showerror("Grid Error", f"Could not evaluate function for plotting grid:\n{e}")
-             Z = np.zeros((self.RES, self.RES)) # Fallback grid
+             Z = np.zeros((self.RES, self.RES)) 
 
 
-        # --- MOST CRITICAL PART: Clean up before plotting ---
         self.ax2d.clear()
         self.ax3d.clear()
 
-        # Clear colorbar safely
         if self.colorbar:
             try:
                 self.colorbar.remove()
             except Exception as e:
                 print(f"Minor err removing cbar: {e}")
-            # Set to None after attempting removal, will be fully nullified next
+
             self.colorbar = None
 
-        self._nullify_artists() # Explicitly set ALL artist variables to None
+        self._nullify_artists() 
 
-        # --- Configure Axes ---
         self.ax2d.set_xlabel('x'); self.ax2d.set_ylabel('y'); self.ax2d.set_title(f'{self.obj_func_name}(Contour)',fontsize=10,fontweight='bold'); self.ax2d.set_xlim([self.domain_min,self.domain_max]); self.ax2d.set_ylim([self.domain_min,self.domain_max]); self.ax2d.set_aspect('equal',adjustable='box')
         self.ax3d.set_xlabel('x'); self.ax3d.set_ylabel('y'); self.ax3d.set_zlabel('f(x,y)'); self.ax3d.set_title(f'{self.obj_func_name}(Surface)',fontsize=10,fontweight='bold'); self.ax3d.set_xlim([self.domain_min,self.domain_max]); self.ax3d.set_ylim([self.domain_min,self.domain_max])
 
-        # --- Recreate Background ---
+
         try:
             self.contour = self.ax2d.contourf(X, Y, Z, levels=20, cmap='viridis', alpha=0.8)
             if hasattr(self,'cbar_ax') and self.cbar_ax is not None and self.contour:
@@ -353,13 +342,13 @@ class PSOViewer:
                  print("Warn: cbar_ax not found or contour failed.")
         except Exception as e:
             print(f"Err contour/cbar: {e}")
-            # *** CORRECTED EXCEPTION BLOCK ***
-            if self.colorbar: # Check if a colorbar object was partially created
+
+            if self.colorbar: 
                 try:
-                    self.colorbar.remove() # Properly indented
+                    self.colorbar.remove() 
                 except Exception as e_rem:
-                    print(f"Err removing potentially failed colorbar: {e_rem}") # Properly indented
-                self.colorbar = None # Properly indented, reset to None after attempt
+                    print(f"Err removing potentially failed colorbar: {e_rem}") 
+                self.colorbar = None #reset to None after attempt
 
         try:
              self.surface = self.ax3d.plot_surface(
@@ -368,8 +357,6 @@ class PSOViewer:
         except Exception as e:
              print(f"Err surface: {e}")
 
-
-        # --- Init Dynamic Elements ---
         try:
             self.scatter2d = self.ax2d.scatter(positions[:, 0], positions[:, 1], c='red', s=25, alpha=0.9, zorder=5, label='Particles')
             self.gbest2d = self.ax2d.scatter([gbest_position[0]], [gbest_position[1]], c='gold', s=150, marker='*', edgecolors='black', linewidths=0.5, zorder=6, label='PSO Best')
@@ -383,8 +370,6 @@ class PSOViewer:
              print(f"Error creating initial dynamic plot elements: {e}")
              messagebox.showerror("Plot Init Error", f"Failed to create initial particle plots:\n{e}")
 
-
-        # --- Create True Optimum Marker (if applicable) ---
         if self.obj_func_name in GLOBAL_OPTIMA:
             true_opt = GLOBAL_OPTIMA[self.obj_func_name]['position']
             true_val = GLOBAL_OPTIMA[self.obj_func_name]['value']
@@ -397,12 +382,10 @@ class PSOViewer:
                      print(f"Err true opt: {e}")
 
 
-        # --- Final Touches ---
         handles, labels = self.ax2d.get_legend_handles_labels()
         if handles:
             self.ax2d.legend(loc='upper right', fontsize='small', frameon=True, framealpha=0.8)
 
-        # Explicitly draw the canvas at the end of setup
         try:
             self.canvas.draw_idle()
         except Exception as draw_e:

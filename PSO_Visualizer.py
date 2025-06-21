@@ -10,7 +10,7 @@ def sphere(x): return np.sum(np.array(x) ** 2)
 def rosenbrock(x): a,b=1,100; x1,x2=x[0],x[1]; return (a-x1)**2 + b*(x2-x1**2)**2
 def rastrigin(x): A=10; n=len(x); return A*n+sum([(xi**2-A*np.cos(2*np.pi*xi)) for xi in x])
 def ackley(x): a,b,c=20,0.2,2*np.pi; n=len(x); s1=-a*np.exp(-b*np.sqrt(sum(xi**2 for xi in x)/n)); s2=-np.exp(sum(np.cos(c*xi) for xi in x)/n); return s1+s2+a+np.exp(1)
-def himmelblau(x): x1,x2=x[0],x[1]; return (x1**2+x2-11)**2+(x1+x2**2-7)**2
+def himmelblau(x): x1,x2=x[0],x[1]; return (x1**2+x2-11)**2+(x1+x2**2-7)**2 #this function has multiple global optima and PSO can find all individually
 def easom(x): x1,x2=x[0],x[1]; return -np.cos(x1)*np.cos(x2)*np.exp(-((x1-np.pi)**2+(x2-np.pi)**2))
 def testing_function(x): x1,x2=x[0],x[1]; return (x1-3.14)**2+(x2-2.72)**2+np.sin(3*x1+1.41)+np.sin(4*x2-1.73)
 

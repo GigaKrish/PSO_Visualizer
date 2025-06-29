@@ -7,7 +7,7 @@ import time
 import traceback # For printing detailed errors
 
 
-#adjusted test functions for minima
+# minima and maxima by adjusting the main f(x)  functions's sign
 def sphere(x): return np.sum(np.array(x) ** 2)
 def rosenbrock(x): a,b=1,100; x1,x2=x[0],x[1]; return (a-x1)**2 + b*(x2-x1**2)**2
 def rastrigin(x): A=10; n=len(x); return A*n+sum([(xi**2-A*np.cos(2*np.pi*xi)) for xi in x])

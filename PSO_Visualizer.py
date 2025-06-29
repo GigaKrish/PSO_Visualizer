@@ -3,41 +3,70 @@ from tkinter import ttk, messagebox
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import traceback
 import time
-import traceback # For printing detailed errors
+
+# Enhanced function evaluation with caching
+class CachedFunction:
+    def __init__(self, func, cache_size=10000):
+        self.func = func
+        self.cache = {}
+        self.cache_size = cache_size
+
+    def __call__(self, x):
+        key = tuple(round(xi, 8) for xi in x)
+        if key not in self.cache:
+            if len(self.cache) >= self.cache_size:
+                oldest_key = next(iter(self.cache))
+                del self.cache[oldest_key]
+            self.cache[key] = self.func(x)
+        return self.cache[key]
 
 
-# minima and maxima by adjusting the main f(x)  functions's sign
+class PlotCache:
+    def __init__(self):
+        self.grid_cache = {}
+
+    def get_grid(self, func_name, domain_min, domain_max, resolution=50):
+        cache_key = (func_name, domain_min, domain_max, resolution)
+        if cache_key not in self.grid_cache:
+            x = np.linspace(domain_min, domain_max, resolution)
+            y = np.linspace(domain_min, domain_max, resolution)
+            X, Y = np.meshgrid(x, y)
+            func = TEST_FUNCTIONS[func_name]
+            Z = np.array([func([X[i, j], Y[i, j]]) for i in range(resolution) for j in range(resolution)]).reshape(
+                resolution, resolution)
+            self.grid_cache[cache_key] = (X, Y, Z)
+        return self.grid_cache[cache_key]
+
+
+# TestFunction
 def sphere(x): return np.sum(np.array(x) ** 2)
 def rosenbrock(x): a,b=1,100; x1,x2=x[0],x[1]; return (a-x1)**2 + b*(x2-x1**2)**2
 def rastrigin(x): A=10; n=len(x); return A*n+sum([(xi**2-A*np.cos(2*np.pi*xi)) for xi in x])
 def ackley(x): a,b,c=20,0.2,2*np.pi; n=len(x); s1=-a*np.exp(-b*np.sqrt(sum(xi**2 for xi in x)/n)); s2=-np.exp(sum(np.cos(c*xi) for xi in x)/n); return s1+s2+a+np.exp(1)
-def himmelblau(x): x1,x2=x[0],x[1]; return (x1**2+x2-11)**2+(x1+x2**2-7)**2 #this function has multiple global optima and PSO can find all individually
+def himmelblau(x): x1,x2=x[0],x[1]; return (x1**2+x2-11)**2+(x1+x2**2-7)**2
 def easom(x): x1,x2=x[0],x[1]; return -np.cos(x1)*np.cos(x2)*np.exp(-((x1-np.pi)**2+(x2-np.pi)**2))
-def testing_function(x): x1,x2=x[0],x[1]; return (x1-3.14)**2+(x2-2.72)**2+np.sin(3*x1+1.41)+np.sin(4*x2-1.73)
+def testing_function(x): x1,x2=x[0],x[1]; return -((x1)**2+(x2)**2)
 
 TEST_FUNCTIONS = {'Sphere': sphere, 'Rosenbrock': rosenbrock, 'Rastrigin': rastrigin, 'Ackley': ackley, 'Himmelblau': himmelblau, 'Easom': easom, 'Testing Function': testing_function}
 GLOBAL_OPTIMA = {'Sphere': {'position': [0,0], 'value': 0}, 'Rosenbrock': {'position': [1,1], 'value': 0}, 'Rastrigin': {'position': [0,0], 'value': 0}, 'Ackley': {'position': [0,0], 'value': 0}, 'Himmelblau': {'position': [3,2], 'value': 0}, 'Easom': {'position': [np.pi,np.pi], 'value': -1}, 'Testing Function': {'position': [3.14,2.72], 'value': testing_function([3.14,2.72])}}
 FUNCTION_DOMAINS = {'Sphere': (-5.0, 5.0), 'Rosenbrock': (-5.0, 5.0), 'Rastrigin': (-5.12, 5.12), 'Ackley': (-5.0, 5.0), 'Himmelblau': (-6.0, 6.0), 'Easom': (0.0, 2 * np.pi), 'Testing Function': (-5.0, 10.0)}
 
-# (adjusted) PSO Algorithm 
+# --- PSO Algorithm ---
 def precompute_pso(obj_func, n_iterations=100, n_particles=30, domain_min=-5.0, domain_max=5.0):
     positions=np.random.uniform(domain_min,domain_max,(n_particles,2)); velocities=np.random.uniform(-1,1,(n_particles,2))
     pbest_values=np.array([obj_func(p) for p in positions]); pbest_positions=positions.copy()
     gbest_idx=np.argmin(pbest_values); gbest_position=pbest_positions[gbest_idx].copy(); gbest_value=pbest_values[gbest_idx]
-
-    
-    #PSO PARAMETERS
-    w=0.9 #SET TO FAST FOR NOW (to escape local optmima properly in Himmelblau)
+    #Parameters
+    w = 0.9
     c1 = 1.5
     c2 = 1.5
-
-    
     iterations_data=[{'positions':positions.copy(),'velocities':velocities.copy(),'pbest_positions':pbest_positions.copy(),'pbest_values':pbest_values.copy(),'gbest_position':gbest_position.copy(),'gbest_value':gbest_value}]
     for _ in range(n_iterations):
         r1,r2=np.random.random((n_particles,2)),np.random.random((n_particles,2))
-        velocities=w*velocities+c1*r1*(pbest_positions-positions)+c2*r2*(gbest_position-positions)
-        velocities=np.clip(velocities,-1,1)
+        velocities = w*velocities + c1*r1*(pbest_positions-positions) + c2*r2*(gbest_position-positions)
+        velocities = np.clip(velocities,-1,1)
         positions=np.clip(positions+velocities,domain_min,domain_max)
         current_values=np.array([obj_func(p) for p in positions])
         improved=current_values<pbest_values; pbest_values[improved]=current_values[improved]; pbest_positions[improved]=positions[improved].copy()
@@ -53,20 +82,23 @@ class PSOViewer:
         master.geometry("1200x750")
         master.minsize(900, 600)
 
+        # Define background colors as instance variables
         self.main_bg = "#f0f0f0"
         self.control_bg = "#e8e8e8"
         self.plot_bg = "#ffffff"
-        self.button_active_bg = '#c0c0c0'
+        self.button_active_bg = '#c0c0c0' # Slightly darker active bg
 
         master.configure(bg=self.main_bg)
 
-        self._configure_styles() 
+        self._configure_styles() # Configure styles using instance colors
 
+        # --- Core Parameters & State ---
         self.current_iter = 0; self.is_playing = False; self.anim_id = None
         self.swarm_data = []; self.fig_width, self.fig_height, self.fig_dpi = 12, 5, 100
         self.RES = 50
+        self.plot_cache = PlotCache()
 
-        # --- Tkinter Variables ---
+
         self.n_iterations_var=tk.IntVar(value=100); self.n_particles_var=tk.IntVar(value=30)
         self.anim_delay_var=tk.IntVar(value=100); self.func_var=tk.StringVar(value='Sphere')
         self.domain_label_var=tk.StringVar(value=""); self.pso_status_var=tk.StringVar(value="Initializing...")
@@ -76,6 +108,9 @@ class PSOViewer:
 
         # Set initial function info
         self.obj_func_name=self.func_var.get(); self.obj_func=TEST_FUNCTIONS[self.obj_func_name]
+        # Wrap function with caching if not already cached
+        if not isinstance(self.obj_func, CachedFunction):
+            self.obj_func = CachedFunction(self.obj_func)
         self.domain_min,self.domain_max=FUNCTION_DOMAINS[self.obj_func_name]
 
         self._create_ui(master)
@@ -89,33 +124,32 @@ class PSOViewer:
 
     def _configure_styles(self):
         style = ttk.Style()
-        try: style.theme_use('clam')
+        try: style.theme_use('clam') # Clam or aqua(mac) often look better
         except tk.TclError: print("Clam theme not found, using default."); style.theme_use('default')
 
-        button_font = ("Segoe UI", 10, "bold") 
+        # Define fonts
+        button_font = ("Segoe UI", 10, "bold") # Bolder buttons
         label_font = ("Segoe UI", 9)
         header_font = ("Segoe UI", 11, "bold")
-        result_font = ("Segoe UI", 10)
+        result_font = ("Segoe UI", 10) # Slightly larger result text
         result_font_bold = (result_font[0], result_font[1], "bold")
 
         style.configure("TFrame", background=self.main_bg)
         style.configure("Control.TFrame", background=self.control_bg, borderwidth=1, relief=tk.FLAT)
         style.configure("PlotArea.TFrame", background=self.plot_bg, borderwidth=1, relief=tk.SUNKEN)
 
-        # --- Enhanced Button Styles ---
-        # Base style for Control Panel buttons
         style.configure("Control.TButton", font=button_font, padding=(8, 6), borderwidth=1, relief=tk.RAISED) # More padding
         style.map("Control.TButton",
                   background=[('active', self.button_active_bg)],
                   relief=[('pressed', tk.SUNKEN), ('!pressed', tk.RAISED)]) # Ensure it raises again
 
-        # Specific Action Buttons
+
         style.configure("Run.TButton", foreground="white", background="#28a745") # Green
         style.configure("Stop.TButton", foreground="white", background="#dc3545") # Red
         style.configure("Recalculate.TButton", foreground="white", background="#007bff") # Blue
         style.configure("Quit.TButton", foreground="white", background="#6c757d") # Grey
 
-        # Ensure specific styles inherit from base Control.TButton
+
         style.configure("Run.TButton", font=button_font, padding=(8, 6), borderwidth=1, relief=tk.RAISED)
         style.configure("Stop.TButton", font=button_font, padding=(8, 6), borderwidth=1, relief=tk.RAISED)
         style.configure("Recalculate.TButton", font=button_font, padding=(8, 6), borderwidth=1, relief=tk.RAISED)
@@ -128,7 +162,7 @@ class PSOViewer:
         style.map("Quit.TButton", background=[('active', '#5a6268')], relief=[('pressed', tk.SUNKEN), ('!pressed', tk.RAISED)])
 
 
-        # --- Labels ---
+
         style.configure("TLabel", background=self.control_bg, font=label_font) # Default label in control panel
         style.configure("Header.TLabel", font=header_font, background=self.control_bg)
         style.configure("Status.TLabel", font=label_font, background=self.control_bg, foreground="#555555")
@@ -136,7 +170,7 @@ class PSOViewer:
         style.configure("ResultValue.TLabel", font=result_font_bold, background=self.main_bg) # Values in results area
         style.configure("ResultLabel.TLabel", font=result_font, background=self.main_bg) # Non-bold labels in results area
 
-        # --- Other Widgets ---
+
         style.configure("TLabelframe", background=self.control_bg)
         style.configure("TLabelframe.Label", background=self.control_bg, font=("Segoe UI", 10, "bold"), padding=(5, 3))
         style.configure("TScale", background=self.control_bg, troughcolor="#b0b0b0", sliderrelief=tk.FLAT, borderwidth=1) # Slightly darker trough, added border
@@ -144,11 +178,11 @@ class PSOViewer:
 
 
     def _create_ui(self, master):
-        # --- Main Layout Frames ---
+
         self.control_panel=ttk.Frame(master,width=260,style="Control.TFrame",padding=10); self.control_panel.pack(side=tk.LEFT,fill=tk.Y,padx=(5,2),pady=5); self.control_panel.pack_propagate(False) # Wider panel
         self.main_area=ttk.Frame(master,padding=(2,5,5,5)); self.main_area.pack(side=tk.RIGHT,fill=tk.BOTH,expand=True)
 
-        # --- Controls (Using new button styles) ---
+
         ttk.Label(self.control_panel,text="PSO Configuration",style="Header.TLabel").pack(pady=(0,10),anchor=tk.W)
         func_frame=ttk.Frame(self.control_panel, style="Control.TFrame"); ttk.Label(func_frame,text="Function:").pack(side=tk.LEFT,anchor=tk.W, padx=(0,5))
         self.func_menu=ttk.Combobox(func_frame,textvariable=self.func_var,values=list(TEST_FUNCTIONS.keys()),state="readonly",width=18,font=("Segoe UI",9)); self.func_menu.pack(side=tk.LEFT,padx=0); self.func_menu.bind("<<ComboboxSelected>>",self.on_function_change); func_frame.pack(fill=tk.X,pady=4)
@@ -163,7 +197,7 @@ class PSOViewer:
         self.n_iterations_scale=ttk.Scale(param_frame,from_=10,to=500,orient=tk.HORIZONTAL,variable=self.n_iterations_var,length=110,command=lambda v:self.n_iterations_var.set(int(float(v)))); self.n_iterations_scale.grid(row=1,column=1,padx=5,pady=4,sticky=tk.EW)
         self.n_iterations_label=ttk.Label(param_frame,textvariable=self.n_iterations_var,width=4, style="ControlPanelValue.TLabel"); self.n_iterations_label.grid(row=1,column=2,padx=5,pady=4); param_frame.columnconfigure(1,weight=1)
 
-        # Apply specific styles to buttons
+
         self.recalc_button=ttk.Button(self.control_panel,text="Recalculate PSO",command=self.recalculate_pso, style="Recalculate.TButton"); self.recalc_button.pack(pady=(15,8),fill=tk.X)
 
         anim_frame=ttk.LabelFrame(self.control_panel,text="Animation"); anim_frame.pack(fill=tk.X,pady=4)
@@ -185,7 +219,7 @@ class PSOViewer:
 
         # --- Results Area (Increased padding and font size) ---
         results_frame=ttk.LabelFrame(self.main_area,text="Results", padding=(10, 5)); results_frame.pack(fill=tk.X,pady=(5,0)) # Add padding to frame
-
+        # Use specific style for labels here
         pady_results = 5 # Increase vertical padding
         ttk.Label(results_frame, text="PSO Best Pos:", style="ResultLabel.TLabel").grid(row=0, column=0, padx=5, pady=pady_results, sticky=tk.W)
         ttk.Label(results_frame, textvariable=self.gbest_pos_var, style="ResultValue.TLabel").grid(row=0, column=1, padx=5, pady=pady_results, sticky=tk.W)
@@ -201,11 +235,12 @@ class PSOViewer:
         ttk.Label(results_frame, textvariable=self.val_error_var, style="ResultValue.TLabel").grid(row=1, column=5, padx=5, pady=pady_results, sticky=tk.W)
         results_frame.columnconfigure(1, weight=1); results_frame.columnconfigure(3, weight=1); results_frame.columnconfigure(5, weight=1)
 
-        #Menu design
-        self.interactive_controls = [ 
+        # --- Define Controls List ---
+        self.interactive_controls = [
             self.func_menu, self.n_particles_scale, self.n_iterations_scale,
             self.recalc_button, self.play_button, self.anim_delay_scale,
             self.iter_scale, self.quit_button ]
+
 
     def _create_figure_and_axes(self):
         plt.style.use('seaborn-v0_8-whitegrid'); plt.rcParams.update({'font.size':9})
@@ -275,14 +310,15 @@ class PSOViewer:
 
     def _nullify_artists(self):
          self.contour, self.colorbar, self.surface = None, None, None
-         self.scatter2d, self.gbest2d, self.quiver2d = None, None, None
-         self.scatter3d, self.gbest3d, self.quiver3d = None, None, None
+         self.scatter2d, self.gbest2d = None, None
+         self.scatter3d, self.gbest3d = None, None
          self.true_opt2d, self.true_opt3d = None, None
 
 
     def on_function_change(self, event=None):
         self.obj_func_name=self.func_var.get(); self.obj_func=TEST_FUNCTIONS[self.obj_func_name]
         self.domain_min,self.domain_max=FUNCTION_DOMAINS[self.obj_func_name]; self._update_domain_label()
+        self.plot_cache.grid_cache.clear()
         self.pso_status_var.set(f"Func->'{self.obj_func_name}'. Press Recalculate.")
 
 
@@ -292,9 +328,10 @@ class PSOViewer:
 
         if not self.swarm_data:
             print("Error: setup_plots called with no swarm data.")
-            self._clear_plots_on_error() 
+            self._clear_plots_on_error() # Attempt cleanup
             return
 
+        # Get initial data safely
         initial_data = self.swarm_data[0]
         positions = initial_data['positions']
         velocities = initial_data['velocities']
@@ -304,22 +341,22 @@ class PSOViewer:
             z_positions = np.array([self.obj_func(p) for p in positions])
         except Exception as e:
             print(f"Error calculating initial Z positions in setup: {e}")
-            z_positions = np.zeros(len(positions)) 
+            z_positions = np.zeros(len(positions)) # Fallback
 
-        x = np.linspace(self.domain_min, self.domain_max, self.RES)
-        y = np.linspace(self.domain_min, self.domain_max, self.RES)
-        X, Y = np.meshgrid(x, y)
+        # --- Prepare background grid ---
         try:
-            Z = np.array([self.obj_func([X[i,j], Y[i,j]])
-                        for i in range(self.RES) for j in range(self.RES)]).reshape(self.RES, self.RES)
+            X, Y, Z = self.plot_cache.get_grid(self.obj_func_name, self.domain_min, self.domain_max, self.RES)
+
         except Exception as e:
              print(f"Error calculating Z grid in setup: {e}")
              messagebox.showerror("Grid Error", f"Could not evaluate function for plotting grid:\n{e}")
-             Z = np.zeros((self.RES, self.RES)) 
+             Z = np.zeros((self.RES, self.RES)) # Fallback grid
+
 
 
         self.ax2d.clear()
         self.ax3d.clear()
+
 
         if self.colorbar:
             try:
@@ -329,11 +366,11 @@ class PSOViewer:
 
             self.colorbar = None
 
-        self._nullify_artists() 
+        self._nullify_artists()
+
 
         self.ax2d.set_xlabel('x'); self.ax2d.set_ylabel('y'); self.ax2d.set_title(f'{self.obj_func_name}(Contour)',fontsize=10,fontweight='bold'); self.ax2d.set_xlim([self.domain_min,self.domain_max]); self.ax2d.set_ylim([self.domain_min,self.domain_max]); self.ax2d.set_aspect('equal',adjustable='box')
         self.ax3d.set_xlabel('x'); self.ax3d.set_ylabel('y'); self.ax3d.set_zlabel('f(x,y)'); self.ax3d.set_title(f'{self.obj_func_name}(Surface)',fontsize=10,fontweight='bold'); self.ax3d.set_xlim([self.domain_min,self.domain_max]); self.ax3d.set_ylim([self.domain_min,self.domain_max])
-
 
         try:
             self.contour = self.ax2d.contourf(X, Y, Z, levels=20, cmap='viridis', alpha=0.8)
@@ -345,12 +382,12 @@ class PSOViewer:
         except Exception as e:
             print(f"Err contour/cbar: {e}")
 
-            if self.colorbar: 
+            if self.colorbar:
                 try:
-                    self.colorbar.remove() 
+                    self.colorbar.remove()
                 except Exception as e_rem:
-                    print(f"Err removing potentially failed colorbar: {e_rem}") 
-                self.colorbar = None #reset to None after attempt
+                    print(f"Err removing potentially failed colorbar: {e_rem}")
+                self.colorbar = None
 
         try:
              self.surface = self.ax3d.plot_surface(
@@ -358,6 +395,8 @@ class PSOViewer:
              )
         except Exception as e:
              print(f"Err surface: {e}")
+
+
 
         try:
             self.scatter2d = self.ax2d.scatter(positions[:, 0], positions[:, 1], c='red', s=25, alpha=0.9, zorder=5, label='Particles')
@@ -372,6 +411,8 @@ class PSOViewer:
              print(f"Error creating initial dynamic plot elements: {e}")
              messagebox.showerror("Plot Init Error", f"Failed to create initial particle plots:\n{e}")
 
+
+
         if self.obj_func_name in GLOBAL_OPTIMA:
             true_opt = GLOBAL_OPTIMA[self.obj_func_name]['position']
             true_val = GLOBAL_OPTIMA[self.obj_func_name]['value']
@@ -384,9 +425,11 @@ class PSOViewer:
                      print(f"Err true opt: {e}")
 
 
+
         handles, labels = self.ax2d.get_legend_handles_labels()
         if handles:
             self.ax2d.legend(loc='upper right', fontsize='small', frameon=True, framealpha=0.8)
+
 
         try:
             self.canvas.draw_idle()
@@ -452,14 +495,25 @@ class PSOViewer:
             if self.current_iter>=len(self.swarm_data)-1: self.current_iter = -1
             self.animate()
 
-
     def animate(self):
         if not self.is_playing or not self.swarm_data: return
-        next_iter=self.current_iter + 1
-        if next_iter>=len(self.swarm_data): self.toggle_play(); self.pso_status_var.set("Finished"); return
-        self.update_plot(next_iter)
-        delay=self.anim_delay_var.get(); self.anim_id=self.master.after(delay,self.animate)
 
+        start_time = time.time()
+        next_iter = self.current_iter + 1
+
+        if next_iter >= len(self.swarm_data):
+            self.toggle_play()
+            self.pso_status_var.set("Finished")
+            return
+
+        self.update_plot(next_iter)
+
+        # Adaptive delay to maintain smooth framerate
+        processing_time = (time.time() - start_time) * 1000  # Convert to ms
+        target_delay = self.anim_delay_var.get()
+        actual_delay = max(10, target_delay - int(processing_time))  # Minimum 10ms
+
+        self.anim_id = self.master.after(actual_delay, self.animate)
 
     def on_closing(self):
         if self.is_playing:

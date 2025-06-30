@@ -8,7 +8,7 @@ import time
 
 # Enhanced function evaluation with caching
 class CachedFunction:
-    def __init__(self, func, cache_size=10000):
+    def __init__(self, func, cache_size=20000):
         self.func = func
         self.cache = {}
         self.cache_size = cache_size

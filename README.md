@@ -3,7 +3,7 @@ A cross platform Tkinter based Particle Swarm Optimization (PSO) Visualizer pure
 
 ### To Install dependencies:
 ```bash
-pip install tkinter
+pip install tkinter numpy matplotlib
 ```
 ### After that, run main script 
 ```bash

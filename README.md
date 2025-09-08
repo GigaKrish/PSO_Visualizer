@@ -1,7 +1,7 @@
 # PSO Visualizer
 A cross platform Tkinter based Particle Swarm Optimization (PSO) Visualizer purely in Python.
 
-### To Install dependencies:
+### Install all dependencies:
 ```bash
 pip install tkinter numpy matplotlib
 ```
